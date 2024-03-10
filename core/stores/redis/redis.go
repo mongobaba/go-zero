@@ -53,12 +53,13 @@ type (
 
 	// Redis defines a redis node/cluster. It is thread-safe.
 	Redis struct {
-		Addr  string
-		Type  string
-		Pass  string
-		tls   bool
-		brk   breaker.Breaker
-		hooks []red.Hook
+		Addr       string
+		Type       string
+		Pass       string
+		tls        bool
+		brk        breaker.Breaker
+		hooks      []red.Hook
+		acceptable func(err error) bool
 	}
 
 	// RedisNode interface represents a redis node.
@@ -133,9 +134,10 @@ func NewRedis(conf RedisConf, opts ...Option) (*Redis, error) {
 
 func newRedis(addr string, opts ...Option) *Redis {
 	r := &Redis{
-		Addr: addr,
-		Type: NodeType,
-		brk:  breaker.NewBreaker(),
+		Addr:       addr,
+		Type:       NodeType,
+		brk:        breaker.NewBreaker(),
+		acceptable: acceptable,
 	}
 
 	for _, opt := range opts {
@@ -168,7 +170,7 @@ func (s *Redis) BitCountCtx(ctx context.Context, key string, start, end int64) (
 			End:   end,
 		}).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -188,7 +190,7 @@ func (s *Redis) BitOpAndCtx(ctx context.Context, destKey string, keys ...string)
 
 		val, err = conn.BitOpAnd(ctx, destKey, keys...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -208,7 +210,7 @@ func (s *Redis) BitOpNotCtx(ctx context.Context, destKey, key string) (val int64
 
 		val, err = conn.BitOpNot(ctx, destKey, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -228,7 +230,7 @@ func (s *Redis) BitOpOrCtx(ctx context.Context, destKey string, keys ...string) 
 
 		val, err = conn.BitOpOr(ctx, destKey, keys...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -248,7 +250,7 @@ func (s *Redis) BitOpXorCtx(ctx context.Context, destKey string, keys ...string)
 
 		val, err = conn.BitOpXor(ctx, destKey, keys...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -268,7 +270,7 @@ func (s *Redis) BitPosCtx(ctx context.Context, key string, bit, start, end int64
 
 		val, err = conn.BitPos(ctx, key, bit, start, end).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -351,7 +353,7 @@ func (s *Redis) DecrCtx(ctx context.Context, key string) (val int64, err error) 
 
 		val, err = conn.Decr(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -371,7 +373,7 @@ func (s *Redis) DecrbyCtx(ctx context.Context, key string, decrement int64) (val
 
 		val, err = conn.DecrBy(ctx, key, decrement).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -396,7 +398,7 @@ func (s *Redis) DelCtx(ctx context.Context, keys ...string) (val int, err error)
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -417,7 +419,7 @@ func (s *Redis) EvalCtx(ctx context.Context, script string, keys []string,
 
 		val, err = conn.Eval(ctx, script, keys, args...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -438,7 +440,7 @@ func (s *Redis) EvalShaCtx(ctx context.Context, sha string, keys []string,
 
 		val, err = conn.EvalSha(ctx, sha, keys, args...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -463,7 +465,7 @@ func (s *Redis) ExistsCtx(ctx context.Context, key string) (val bool, err error)
 
 		val = v == 1
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -490,7 +492,7 @@ func (s *Redis) ExistsManyCtx(ctx context.Context, keys ...string) (val int64, e
 
 		val = v
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -509,7 +511,7 @@ func (s *Redis) ExpireCtx(ctx context.Context, key string, seconds int) error {
 		}
 
 		return conn.Expire(ctx, key, time.Duration(seconds)*time.Second).Err()
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // Expireat is the implementation of redis expireat command.
@@ -526,7 +528,7 @@ func (s *Redis) ExpireatCtx(ctx context.Context, key string, expireTime int64) e
 		}
 
 		return conn.ExpireAt(ctx, key, time.Unix(expireTime, 0)).Err()
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // GeoAdd is the implementation of redis geoadd command.
@@ -550,7 +552,7 @@ func (s *Redis) GeoAddCtx(ctx context.Context, key string, geoLocation ...*GeoLo
 
 		val = v
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -576,7 +578,7 @@ func (s *Redis) GeoDistCtx(ctx context.Context, key, member1, member2, unit stri
 
 		val = v
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -602,7 +604,7 @@ func (s *Redis) GeoHashCtx(ctx context.Context, key string, members ...string) (
 
 		val = v
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -629,7 +631,7 @@ func (s *Redis) GeoRadiusCtx(ctx context.Context, key string, longitude, latitud
 
 		val = v
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -655,7 +657,7 @@ func (s *Redis) GeoRadiusByMemberCtx(ctx context.Context, key, member string,
 
 		val = v
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -681,7 +683,7 @@ func (s *Redis) GeoPosCtx(ctx context.Context, key string, members ...string) (
 
 		val = v
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -706,7 +708,7 @@ func (s *Redis) GetCtx(ctx context.Context, key string) (val string, err error) 
 		} else {
 			return nil
 		}
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -731,7 +733,7 @@ func (s *Redis) GetBitCtx(ctx context.Context, key string, offset int64) (val in
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -754,7 +756,7 @@ func (s *Redis) GetSetCtx(ctx context.Context, key, value string) (val string, e
 		}
 
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -779,7 +781,7 @@ func (s *Redis) HdelCtx(ctx context.Context, key string, fields ...string) (val 
 
 		val = v >= 1
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -799,7 +801,7 @@ func (s *Redis) HexistsCtx(ctx context.Context, key, field string) (val bool, er
 
 		val, err = conn.HExists(ctx, key, field).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -819,7 +821,7 @@ func (s *Redis) HgetCtx(ctx context.Context, key, field string) (val string, err
 
 		val, err = conn.HGet(ctx, key, field).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -839,7 +841,7 @@ func (s *Redis) HgetallCtx(ctx context.Context, key string) (val map[string]stri
 
 		val, err = conn.HGetAll(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -864,7 +866,7 @@ func (s *Redis) HincrbyCtx(ctx context.Context, key, field string, increment int
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -886,7 +888,7 @@ func (s *Redis) HincrbyFloatCtx(ctx context.Context, key, field string, incremen
 			return err
 		}
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -906,7 +908,7 @@ func (s *Redis) HkeysCtx(ctx context.Context, key string) (val []string, err err
 
 		val, err = conn.HKeys(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -931,7 +933,7 @@ func (s *Redis) HlenCtx(ctx context.Context, key string) (val int, err error) {
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -956,7 +958,7 @@ func (s *Redis) HmgetCtx(ctx context.Context, key string, fields ...string) (val
 
 		val = toStrings(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -975,7 +977,7 @@ func (s *Redis) HsetCtx(ctx context.Context, key, field, value string) error {
 		}
 
 		return conn.HSet(ctx, key, field, value).Err()
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // Hsetnx is the implementation of redis hsetnx command.
@@ -993,7 +995,7 @@ func (s *Redis) HsetnxCtx(ctx context.Context, key, field, value string) (val bo
 
 		val, err = conn.HSetNX(ctx, key, field, value).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1017,7 +1019,7 @@ func (s *Redis) HmsetCtx(ctx context.Context, key string, fieldsAndValues map[st
 		}
 
 		return conn.HMSet(ctx, key, vals).Err()
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // Hscan is the implementation of redis hscan command.
@@ -1037,7 +1039,7 @@ func (s *Redis) HscanCtx(ctx context.Context, key string, cursor uint64, match s
 
 		keys, cur, err = conn.HScan(ctx, key, cursor, match, count).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1057,7 +1059,7 @@ func (s *Redis) HvalsCtx(ctx context.Context, key string) (val []string, err err
 
 		val, err = conn.HVals(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1077,7 +1079,7 @@ func (s *Redis) IncrCtx(ctx context.Context, key string) (val int64, err error) 
 
 		val, err = conn.Incr(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1097,7 +1099,7 @@ func (s *Redis) IncrbyCtx(ctx context.Context, key string, increment int64) (val
 
 		val, err = conn.IncrBy(ctx, key, increment).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1117,7 +1119,7 @@ func (s *Redis) IncrbyFloatCtx(ctx context.Context, key string, increment float6
 
 		val, err = conn.IncrByFloat(ctx, key, increment).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1137,7 +1139,7 @@ func (s *Redis) KeysCtx(ctx context.Context, pattern string) (val []string, err 
 
 		val, err = conn.Keys(ctx, pattern).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1162,7 +1164,7 @@ func (s *Redis) LlenCtx(ctx context.Context, key string) (val int, err error) {
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1182,7 +1184,7 @@ func (s *Redis) LindexCtx(ctx context.Context, key string, index int64) (val str
 
 		val, err = conn.LIndex(ctx, key, index).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1202,7 +1204,7 @@ func (s *Redis) LpopCtx(ctx context.Context, key string) (val string, err error)
 
 		val, err = conn.LPop(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1222,7 +1224,7 @@ func (s *Redis) LpopCountCtx(ctx context.Context, key string, count int) (val []
 
 		val, err = conn.LPopCount(ctx, key, count).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1247,7 +1249,7 @@ func (s *Redis) LpushCtx(ctx context.Context, key string, values ...any) (val in
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1267,7 +1269,7 @@ func (s *Redis) LrangeCtx(ctx context.Context, key string, start, stop int) (val
 
 		val, err = conn.LRange(ctx, key, int64(start), int64(stop)).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1292,7 +1294,7 @@ func (s *Redis) LremCtx(ctx context.Context, key string, count int, value string
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1311,7 +1313,7 @@ func (s *Redis) LtrimCtx(ctx context.Context, key string, start, stop int64) err
 		}
 
 		return conn.LTrim(ctx, key, start, stop).Err()
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // Mget is the implementation of redis mget command.
@@ -1334,7 +1336,7 @@ func (s *Redis) MgetCtx(ctx context.Context, keys ...string) (val []string, err 
 
 		val = toStrings(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1354,7 +1356,7 @@ func (s *Redis) PersistCtx(ctx context.Context, key string) (val bool, err error
 
 		val, err = conn.Persist(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1379,7 +1381,7 @@ func (s *Redis) PfaddCtx(ctx context.Context, key string, values ...any) (val bo
 
 		val = v >= 1
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1399,7 +1401,7 @@ func (s *Redis) PfcountCtx(ctx context.Context, key string) (val int64, err erro
 
 		val, err = conn.PFCount(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1419,7 +1421,7 @@ func (s *Redis) PfmergeCtx(ctx context.Context, dest string, keys ...string) err
 
 		_, err = conn.PFMerge(ctx, dest, keys...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // Ping is the implementation of redis ping command.
@@ -1445,7 +1447,7 @@ func (s *Redis) PingCtx(ctx context.Context) (val bool) {
 
 		val = v == "PONG"
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1466,7 +1468,7 @@ func (s *Redis) PipelinedCtx(ctx context.Context, fn func(Pipeliner) error) erro
 
 		_, err = conn.Pipelined(ctx, fn)
 		return err
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // Rpop is the implementation of redis rpop command.
@@ -1484,7 +1486,7 @@ func (s *Redis) RpopCtx(ctx context.Context, key string) (val string, err error)
 
 		val, err = conn.RPop(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1504,7 +1506,7 @@ func (s *Redis) RpopCountCtx(ctx context.Context, key string, count int) (val []
 
 		val, err = conn.RPopCount(ctx, key, count).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1529,7 +1531,7 @@ func (s *Redis) RpushCtx(ctx context.Context, key string, values ...any) (val in
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1554,7 +1556,7 @@ func (s *Redis) SaddCtx(ctx context.Context, key string, values ...any) (val int
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1575,7 +1577,7 @@ func (s *Redis) ScanCtx(ctx context.Context, cursor uint64, match string, count 
 
 		keys, cur, err = conn.Scan(ctx, cursor, match, count).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1600,7 +1602,7 @@ func (s *Redis) SetBitCtx(ctx context.Context, key string, offset int64, value i
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1622,7 +1624,7 @@ func (s *Redis) SscanCtx(ctx context.Context, key string, cursor uint64, match s
 
 		keys, cur, err = conn.SScan(ctx, key, cursor, match, count).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1642,7 +1644,7 @@ func (s *Redis) ScardCtx(ctx context.Context, key string) (val int64, err error)
 
 		val, err = conn.SCard(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1677,7 +1679,7 @@ func (s *Redis) ScriptRunCtx(ctx context.Context, script *Script, keys []string,
 
 		val, err = script.Run(ctx, conn, keys, args...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 	return
 }
 
@@ -1695,7 +1697,7 @@ func (s *Redis) SetCtx(ctx context.Context, key, value string) error {
 		}
 
 		return conn.Set(ctx, key, value, 0).Err()
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // Setex is the implementation of redis setex command.
@@ -1712,7 +1714,7 @@ func (s *Redis) SetexCtx(ctx context.Context, key, value string, seconds int) er
 		}
 
 		return conn.Set(ctx, key, value, time.Duration(seconds)*time.Second).Err()
-	}, acceptable)
+	}, s.acceptable)
 }
 
 // Setnx is the implementation of redis setnx command.
@@ -1730,7 +1732,7 @@ func (s *Redis) SetnxCtx(ctx context.Context, key, value string) (val bool, err 
 
 		val, err = conn.SetNX(ctx, key, value, 0).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1750,7 +1752,7 @@ func (s *Redis) SetnxExCtx(ctx context.Context, key, value string, seconds int) 
 
 		val, err = conn.SetNX(ctx, key, value, time.Duration(seconds)*time.Second).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1770,7 +1772,7 @@ func (s *Redis) SismemberCtx(ctx context.Context, key string, value any) (val bo
 
 		val, err = conn.SIsMember(ctx, key, value).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1790,7 +1792,7 @@ func (s *Redis) SmembersCtx(ctx context.Context, key string) (val []string, err 
 
 		val, err = conn.SMembers(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1810,7 +1812,7 @@ func (s *Redis) SpopCtx(ctx context.Context, key string) (val string, err error)
 
 		val, err = conn.SPop(ctx, key).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1830,7 +1832,7 @@ func (s *Redis) SrandmemberCtx(ctx context.Context, key string, count int) (val 
 
 		val, err = conn.SRandMemberN(ctx, key, int64(count)).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1855,7 +1857,7 @@ func (s *Redis) SremCtx(ctx context.Context, key string, values ...any) (val int
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1880,7 +1882,7 @@ func (s *Redis) SunionCtx(ctx context.Context, keys ...string) (val []string, er
 
 		val, err = conn.SUnion(ctx, keys...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1906,7 +1908,7 @@ func (s *Redis) SunionstoreCtx(ctx context.Context, destination string, keys ...
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1926,7 +1928,7 @@ func (s *Redis) SdiffCtx(ctx context.Context, keys ...string) (val []string, err
 
 		val, err = conn.SDiff(ctx, keys...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1952,7 +1954,7 @@ func (s *Redis) SdiffstoreCtx(ctx context.Context, destination string, keys ...s
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1972,7 +1974,7 @@ func (s *Redis) SinterCtx(ctx context.Context, keys ...string) (val []string, er
 
 		val, err = conn.SInter(ctx, keys...).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -1998,7 +2000,7 @@ func (s *Redis) SinterstoreCtx(ctx context.Context, destination string, keys ...
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2029,7 +2031,7 @@ func (s *Redis) TtlCtx(ctx context.Context, key string) (val int, err error) {
 			val = int(duration)
 		}
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2069,7 +2071,7 @@ func (s *Redis) ZaddFloatCtx(ctx context.Context, key string, score float64, val
 
 		val = v == 1
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2100,7 +2102,7 @@ func (s *Redis) ZaddsCtx(ctx context.Context, key string, ps ...Pair) (val int64
 
 		val = v
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2125,7 +2127,7 @@ func (s *Redis) ZcardCtx(ctx context.Context, key string) (val int, err error) {
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2151,7 +2153,7 @@ func (s *Redis) ZcountCtx(ctx context.Context, key string, start, stop int64) (v
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2177,7 +2179,7 @@ func (s *Redis) ZincrbyCtx(ctx context.Context, key string, increment int64, fie
 
 		val = int64(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2202,7 +2204,7 @@ func (s *Redis) ZscoreCtx(ctx context.Context, key, value string) (val int64, er
 
 		val = int64(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2221,7 +2223,7 @@ func (s *Redis) ZscoreByFloatCtx(ctx context.Context, key, value string) (val fl
 		}
 		val, err = conn.ZScore(ctx, key, value).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2243,7 +2245,7 @@ func (s *Redis) ZscanCtx(ctx context.Context, key string, cursor uint64, match s
 
 		keys, cur, err = conn.ZScan(ctx, key, cursor, match, count).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2263,7 +2265,7 @@ func (s *Redis) ZrankCtx(ctx context.Context, key, field string) (val int64, err
 
 		val, err = conn.ZRank(ctx, key, field).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2288,7 +2290,7 @@ func (s *Redis) ZremCtx(ctx context.Context, key string, values ...any) (val int
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2315,7 +2317,7 @@ func (s *Redis) ZremrangebyscoreCtx(ctx context.Context, key string, start, stop
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2341,7 +2343,7 @@ func (s *Redis) ZremrangebyrankCtx(ctx context.Context, key string, start, stop 
 
 		val = int(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2362,7 +2364,7 @@ func (s *Redis) ZrangeCtx(ctx context.Context, key string, start, stop int64) (
 
 		val, err = conn.ZRange(ctx, key, start, stop).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2388,7 +2390,7 @@ func (s *Redis) ZrangeWithScoresCtx(ctx context.Context, key string, start, stop
 
 		val = toPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2414,7 +2416,7 @@ func (s *Redis) ZrangeWithScoresByFloatCtx(ctx context.Context, key string, star
 
 		val = toFloatPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2453,7 +2455,7 @@ func (s *Redis) ZrevrangeWithScoresCtx(ctx context.Context, key string, start, s
 
 		val = toPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2492,7 +2494,7 @@ func (s *Redis) ZrevrangeWithScoresByFloatCtx(ctx context.Context, key string, s
 
 		val = toFloatPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2521,7 +2523,7 @@ func (s *Redis) ZrangebyscoreWithScoresCtx(ctx context.Context, key string, star
 
 		val = toPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2550,7 +2552,7 @@ func (s *Redis) ZrangebyscoreWithScoresByFloatCtx(ctx context.Context, key strin
 
 		val = toFloatPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2588,7 +2590,7 @@ func (s *Redis) ZrangebyscoreWithScoresAndLimitCtx(ctx context.Context, key stri
 
 		val = toPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2627,7 +2629,7 @@ func (s *Redis) ZrangebyscoreWithScoresByFloatAndLimitCtx(ctx context.Context, k
 
 		val = toFloatPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2648,7 +2650,7 @@ func (s *Redis) ZrevrangeCtx(ctx context.Context, key string, start, stop int64)
 
 		val, err = conn.ZRevRange(ctx, key, start, stop).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2677,7 +2679,7 @@ func (s *Redis) ZrevrangebyscoreWithScoresCtx(ctx context.Context, key string, s
 
 		val = toPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2707,7 +2709,7 @@ func (s *Redis) ZrevrangebyscoreWithScoresByFloatCtx(ctx context.Context, key st
 
 		val = toFloatPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2746,7 +2748,7 @@ func (s *Redis) ZrevrangebyscoreWithScoresAndLimitCtx(ctx context.Context, key s
 
 		val = toPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2785,7 +2787,7 @@ func (s *Redis) ZrevrangebyscoreWithScoresByFloatAndLimitCtx(ctx context.Context
 
 		val = toFloatPairs(v)
 		return nil
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2805,7 +2807,7 @@ func (s *Redis) ZrevrankCtx(ctx context.Context, key, field string) (val int64, 
 
 		val, err = conn.ZRevRank(ctx, key, field).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2826,7 +2828,7 @@ func (s *Redis) ZunionstoreCtx(ctx context.Context, dest string, store *ZStore) 
 
 		val, err = conn.ZUnionStore(ctx, dest, store).Result()
 		return err
-	}, acceptable)
+	}, s.acceptable)
 
 	return
 }
@@ -2879,6 +2881,19 @@ func WithTLS() Option {
 func withHook(hook red.Hook) Option {
 	return func(r *Redis) {
 		r.hooks = append(r.hooks, hook)
+	}
+}
+
+// WithAcceptable customizes the given Redis with user-defined acceptable function.
+func WithAcceptable(f func(err error) bool) Option {
+	return func(r *Redis) {
+		if old := r.acceptable; old == nil {
+			r.acceptable = f
+		} else {
+			r.acceptable = func(err error) bool {
+				return f(err) || old(err)
+			}
+		}
 	}
 }
 

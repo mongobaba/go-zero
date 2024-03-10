@@ -2,7 +2,6 @@ package sqlx
 
 import (
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/go-sql-driver/mysql"
@@ -38,7 +37,6 @@ func TestBreakerOnNotHandlingDuplicateEntry(t *testing.T) {
 func TestMysqlAcceptable(t *testing.T) {
 	conn := NewMysql("nomysql").(*commonSqlConn)
 	withMysqlAcceptable()(conn)
-	assert.EqualValues(t, reflect.ValueOf(mysqlAcceptable).Pointer(), reflect.ValueOf(conn.accept).Pointer())
 	assert.True(t, mysqlAcceptable(nil))
 	assert.False(t, mysqlAcceptable(errors.New("any")))
 	assert.False(t, mysqlAcceptable(new(mysql.MySQLError)))
@@ -63,4 +61,17 @@ func tryOnDuplicateEntryError(t *testing.T, accept func(error) bool) error {
 			Number: duplicateEntryCode,
 		}
 	}, conn.acceptable)
+}
+
+func TestCustomizedAcceptable(t *testing.T) {
+	e := errors.New("test error")
+	ac := func(err error) bool {
+		return e == err
+	}
+	conn := NewMysql("nomysql", WithAcceptable(ac)).(*commonSqlConn)
+	assert.True(t, conn.acceptable(e))
+
+	// don't hide default acceptable function
+	myerr := mysql.MySQLError{Number: duplicateEntryCode}
+	assert.True(t, conn.acceptable(&myerr))
 }

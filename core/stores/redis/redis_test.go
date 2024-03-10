@@ -1944,3 +1944,18 @@ type mockedNode struct {
 func (n mockedNode) BLPop(_ context.Context, _ time.Duration, _ ...string) *red.StringSliceCmd {
 	return red.NewStringSliceCmd(context.Background(), "foo", "bar")
 }
+
+func TestWithAcceptable(t *testing.T) {
+	c := RedisConf{
+		Host:     "host",
+		Type:     "node",
+		NonBlock: true,
+	}
+	e := errors.New("test error")
+	rds := MustNewRedis(c, WithAcceptable(func(err error) bool {
+		return e == err
+	}))
+	assert.True(t, rds.acceptable(e))
+	// don't hide default acceptable function
+	assert.True(t, rds.acceptable(nil))
+}
